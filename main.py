@@ -144,6 +144,47 @@ def pick_best(candidates):
     return ranked[0]
 
 
+CONCRETE_DB_TERMS = (
+    "query times",
+    "backup",
+    "table",
+    "database",
+    "training data",
+    "index",
+    "row",
+    "replica",
+    "transaction log",
+)
+
+
+def specificity_score(candidate: dict) -> int:
+    """Concrete-object score (0-5): how many distinct concrete database
+    objects the line names. A joke that names a real object — query times,
+    a backup, a table — is anchored in the accident itself; a joke that
+    only says 'the database' in the abstract could be about any deleted
+    thing, so it earns less here."""
+    text = candidate["text"].lower()
+    hits = {term for term in CONCRETE_DB_TERMS if term in text}
+    return min(5, len(hits))
+
+
+STOCK_PHRASES = (
+    "good news",
+    "bad news",
+    "cleaned up",
+    "learned the difference",
+    "that was the cleaning",
+)
+
+
+def check_not_cliche(text: str) -> None:
+    """De-cliche check: the winner must not lean on a stock gag anyone
+    could reach for. Raises if a canned phrase slipped into the pick."""
+    lowered = text.lower()
+    for phrase in STOCK_PHRASES:
+        assert phrase not in lowered, f"winner leans on stock phrase: {phrase!r}"
+
+
 def main() -> int:
     for candidate in CANDIDATES:
         check_candidate(candidate)
@@ -154,12 +195,18 @@ def main() -> int:
         key=lambda c: (tuple(-s for s in c["scores"]), len(c["text"])),
     )
     for candidate in ranked:
+        parts = candidate["scores"]
+        total = parts[0] + parts[1] + parts[2] + parts[3] + parts[4]
+        assert total == sum(parts), f"{candidate['id']}: breakdown sum mismatch"
         print(
-            f"  {candidate['id']}: scores {candidate['scores']} "
+            f"  {candidate['id']}: on-topic {parts[0]} laugh {parts[1]} "
+            f"voice {parts[2]} one-line {parts[3]} warmth {parts[4]} "
+            f"total {total} specificity {specificity_score(candidate)} "
             f"chars {len(candidate['text'])}"
         )
 
     best = pick_best(CANDIDATES)
+    check_not_cliche(best["text"])
     text = best["text"]
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
